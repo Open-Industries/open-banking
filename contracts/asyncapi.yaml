@@ -1,22 +1,158 @@
-asyncapi: 3.0.0
+asyncapi: 2.6.0
 info:
-  title: Open Banking Reference Events
-  version: 0.1.0
+  title: Open Banking — Domain Events
+  version: 1.0.0
+  description: >
+    CloudEvents 1.0 envelopes published by the platform's bounded contexts.
+    Consumers MUST be idempotent and tolerate unknown fields. Ordering is
+    guaranteed only per aggregate (the CloudEvent `subject`).
+servers:
+  production:
+    url: kafka://broker.banking.svc.cluster.local:9092
+    protocol: kafka
+    description: Kafka-backed Knative Broker in production; Knative Broker abstraction elsewhere.
 channels:
-  domainEvents:
-    address: open-banking.domain-events.v1
-    messages:
-      domainEvent:
-        $ref: '#/components/messages/DomainEvent'
-operations:
-  receiveDomainEvent:
-    action: receive
-    channel:
-      $ref: '#/channels/domainEvents'
+  customer.onboarded:
+    publish:
+      operationId: onCustomerOnboarded
+      message: { $ref: '#/components/messages/CustomerOnboarded' }
+  customer.kyc-decided:
+    publish:
+      operationId: onCustomerKycDecided
+      message: { $ref: '#/components/messages/CustomerKycDecided' }
+  account.opened:
+    publish:
+      operationId: onAccountOpened
+      message: { $ref: '#/components/messages/AccountOpened' }
+  ledger.posting-applied:
+    publish:
+      operationId: onLedgerPostingApplied
+      message: { $ref: '#/components/messages/LedgerPostingApplied' }
+  payment.authorized:
+    publish:
+      operationId: onPaymentAuthorized
+      message: { $ref: '#/components/messages/PaymentStatusChanged' }
+  payment.executed:
+    publish:
+      operationId: onPaymentExecuted
+      message: { $ref: '#/components/messages/PaymentStatusChanged' }
+  payment.failed:
+    publish:
+      operationId: onPaymentFailed
+      message: { $ref: '#/components/messages/PaymentStatusChanged' }
+  card.issued:
+    publish:
+      operationId: onCardIssued
+      message: { $ref: '#/components/messages/CardIssued' }
+  loan.approved:
+    publish:
+      operationId: onLoanApproved
+      message: { $ref: '#/components/messages/LoanStatusChanged' }
 components:
   messages:
-    DomainEvent:
-      name: PaymentAuthorized
-      contentType: application/cloudevents+json
-      payload:
-        $ref: './cloudevents/domain-event.schema.json'
+    CustomerOnboarded:
+      payload: { $ref: '#/components/schemas/CloudEventCustomer' }
+    CustomerKycDecided:
+      payload: { $ref: '#/components/schemas/CloudEventCustomerKyc' }
+    AccountOpened:
+      payload: { $ref: '#/components/schemas/CloudEventAccount' }
+    LedgerPostingApplied:
+      payload: { $ref: '#/components/schemas/CloudEventPosting' }
+    PaymentStatusChanged:
+      payload: { $ref: '#/components/schemas/CloudEventPayment' }
+    CardIssued:
+      payload: { $ref: '#/components/schemas/CloudEventCard' }
+    LoanStatusChanged:
+      payload: { $ref: '#/components/schemas/CloudEventLoan' }
+  schemas:
+    CloudEventBase:
+      type: object
+      required: [specversion, id, source, type, time]
+      properties:
+        specversion: { type: string, enum: ['1.0'] }
+        id: { type: string, format: uuid }
+        source: { type: string, example: '/open-banking/payment-service' }
+        type: { type: string, example: 'payment.executed' }
+        subject: { type: string, description: Aggregate id (ordering key). }
+        time: { type: string, format: date-time }
+        datacontenttype: { type: string, enum: [application/json] }
+    CloudEventCustomer:
+      allOf:
+        - { $ref: '#/components/schemas/CloudEventBase' }
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                customerId: { type: string, format: uuid }
+                customerType: { type: string, enum: [INDIVIDUAL, BUSINESS] }
+    CloudEventCustomerKyc:
+      allOf:
+        - { $ref: '#/components/schemas/CloudEventBase' }
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                customerId: { type: string, format: uuid }
+                kycStatus: { type: string, enum: [VERIFIED, REJECTED] }
+    CloudEventAccount:
+      allOf:
+        - { $ref: '#/components/schemas/CloudEventBase' }
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                accountId: { type: string, format: uuid }
+                customerId: { type: string, format: uuid }
+                accountType: { type: string, enum: [CHECKING, SAVINGS] }
+                currency: { type: string, pattern: '^[A-Z]{3}$' }
+    CloudEventPosting:
+      allOf:
+        - { $ref: '#/components/schemas/CloudEventBase' }
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                journalEntryId: { type: string, format: uuid }
+                accountId: { type: string, format: uuid }
+                direction: { type: string, enum: [DEBIT, CREDIT] }
+                amountMinor: { type: integer, format: int64 }
+                currency: { type: string, pattern: '^[A-Z]{3}$' }
+    CloudEventPayment:
+      allOf:
+        - { $ref: '#/components/schemas/CloudEventBase' }
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                paymentId: { type: string, format: uuid }
+                status: { type: string, enum: [AUTHORIZED, EXECUTED, FAILED] }
+                amountMinor: { type: integer, format: int64 }
+                currency: { type: string, pattern: '^[A-Z]{3}$' }
+                rail: { type: string, enum: [INTERNAL, SEPA, FEDNOW, SPEI, GENERIC] }
+    CloudEventCard:
+      allOf:
+        - { $ref: '#/components/schemas/CloudEventBase' }
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                cardId: { type: string, format: uuid }
+                accountId: { type: string, format: uuid }
+                maskedPan: { type: string, example: '**** **** **** 1234' }
+    CloudEventLoan:
+      allOf:
+        - { $ref: '#/components/schemas/CloudEventBase' }
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                loanId: { type: string, format: uuid }
+                customerId: { type: string, format: uuid }
+                status: { type: string, enum: [APPROVED, REJECTED, DISBURSED, CLOSED] }
