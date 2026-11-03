@@ -19,7 +19,6 @@ import java.util.UUID;
 
 @Path("/api/v1/cards")
 @Produces(MediaType.APPLICATION_JSON)
-@Consumes(MediaType.APPLICATION_JSON)
 @Tag(name = "Cards", description = "Card issuance and lifecycle (masked PAN only)")
 public class CardResource {
 
@@ -27,6 +26,7 @@ public class CardResource {
     CardService service;
 
     @POST
+    @Consumes(MediaType.APPLICATION_JSON)
     @Operation(summary = "Issue a card for an account")
     public Response issue(@Valid IssueCardRequest request) {
         return Response.status(Response.Status.CREATED).entity(service.issue(request)).build();

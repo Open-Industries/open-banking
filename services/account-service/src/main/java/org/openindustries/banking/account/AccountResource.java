@@ -20,7 +20,6 @@ import java.util.UUID;
 
 @Path("/api/v1/accounts")
 @Produces(MediaType.APPLICATION_JSON)
-@Consumes(MediaType.APPLICATION_JSON)
 @Tag(name = "Accounts", description = "Deposit accounts")
 public class AccountResource {
 
@@ -28,6 +27,7 @@ public class AccountResource {
     AccountService service;
 
     @POST
+    @Consumes(MediaType.APPLICATION_JSON)
     @Operation(summary = "Open a deposit account")
     public Response open(@Valid OpenAccountRequest request) {
         return Response.status(Response.Status.CREATED).entity(service.open(request)).build();
@@ -55,6 +55,7 @@ public class AccountResource {
 
     @POST
     @Path("/{id}/postings")
+    @Consumes(MediaType.APPLICATION_JSON)
     @Operation(summary = "Apply a ledger-confirmed posting (internal, event-driven in production)")
     public Account posting(@PathParam("id") UUID id, Map<String, Long> body) {
         return service.applyPosting(id, body.getOrDefault("deltaMinor", 0L));

@@ -19,7 +19,6 @@ import java.util.UUID;
 
 @Path("/api/v1/payments")
 @Produces(MediaType.APPLICATION_JSON)
-@Consumes(MediaType.APPLICATION_JSON)
 @Tag(name = "Payments", description = "Payment orders and transfers")
 public class PaymentResource {
 
@@ -27,6 +26,7 @@ public class PaymentResource {
     PaymentService service;
 
     @POST
+    @Consumes(MediaType.APPLICATION_JSON)
     @Operation(summary = "Create a payment order (requires Idempotency-Key)")
     public Response create(@HeaderParam("Idempotency-Key") String idempotencyKey,
                            @Valid CreatePaymentRequest request) {
