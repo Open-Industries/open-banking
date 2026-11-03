@@ -1,0 +1,30 @@
+# Knative Triggers: route domain CloudEvents from the Broker to the functions.
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata: { name: fraud-scoring, namespace: banking }
+spec:
+  broker: default
+  filter:
+    attributes: { type: payment.authorized }
+  subscriber:
+    ref: { apiVersion: serving.knative.dev/v1, kind: Service, name: fraud-signal-scorer }
+---
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata: { name: kyc-processing, namespace: banking }
+spec:
+  broker: default
+  filter:
+    attributes: { type: customer.onboarded }
+  subscriber:
+    ref: { apiVersion: serving.knative.dev/v1, kind: Service, name: kyc-document-processor }
+---
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata: { name: statement-generation, namespace: banking }
+spec:
+  broker: default
+  filter:
+    attributes: { type: ledger.period-closed }
+  subscriber:
+    ref: { apiVersion: serving.knative.dev/v1, kind: Service, name: statement-generator }

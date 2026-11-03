@@ -1,7 +1,26 @@
-.PHONY: validate test
+# Open Banking — developer entry points
+.PHONY: build test verify dev-ledger dev-account dev-payment compose-up compose-down
 
-validate:
-	@python3 -c 'import json,pathlib; [json.loads(p.read_text()) for p in pathlib.Path(".").rglob("*.json")]; print("JSON valid")'
+build:            ## Build all modules without tests
+	mvn -q package -DskipTests
 
-test: validate
-	@echo "Add executable contract, integration, resilience and performance tests under tests/."
+test:             ## Run all tests
+	mvn test
+
+verify:           ## Full verification (life-cycle gate G3)
+	mvn verify
+
+dev-ledger:       ## Run the ledger service in dev mode
+	mvn -pl services/ledger-service quarkus:dev
+
+dev-account:
+	mvn -pl services/account-service quarkus:dev
+
+dev-payment:
+	mvn -pl services/payment-service quarkus:dev
+
+compose-up:       ## Start local backing services (PostgreSQL, Kafka, Keycloak)
+	docker compose up -d
+
+compose-down:
+	docker compose down

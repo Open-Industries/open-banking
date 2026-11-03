@@ -1,41 +1,194 @@
 openapi: 3.1.0
 info:
-  title: Open Banking Reference API
-  version: 0.1.0
-  description: Provider-neutral research contract for consent-aware payment and financial-data interoperability.
+  title: Open Banking — Reference Core Banking API (aggregate contract)
+  version: 1.1.0
+  description: >
+    Aggregate view of the platform's public REST contracts. The normative per-service
+    contracts are generated from code by Quarkus SmallRye OpenAPI at `/openapi` on each
+    service; CI diffs them against this file (see docs/api/api-standards.md).
+    Conventions: RFC 9457 errors, Idempotency-Key on creates, money as integer
+    minor units + ISO 4217 currency.
 servers:
-  - url: https://api.example.org/open-banking/v1
+  - url: https://api.bank.example/api/v1
+    description: Production (per adopter)
+security:
+  - bearerAuth: []
 paths:
-  /payments/{id}:
-    get:
-      operationId: getPayment
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-        - name: X-Correlation-ID
-          in: header
-          required: true
-          schema: { type: string, format: uuid }
+  /customers:
+    post:
+      operationId: onboardCustomer
+      summary: Onboard a customer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateCustomer' }
       responses:
-        '200':
-          description: Domain resource
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DomainResource'
-        '404': { description: Not found }
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Customer' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+  /customers/{id}:
+    get:
+      operationId: getCustomer
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Customer' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+  /accounts:
+    post:
+      operationId: openAccount
+      summary: Open a deposit account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OpenAccount' }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Account' } } } }
+  /ledger/journal-entries:
+    post:
+      operationId: bookJournalEntry
+      summary: Book a balanced double-entry journal entry (idempotent by `reference`)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/JournalEntryCreate' }
+      responses:
+        '201': { description: Booked }
+        '422': { $ref: '#/components/responses/Problem' }
+  /ledger/balances:
+    get:
+      operationId: trialBalance
+      parameters:
+        - { name: accountId, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: currency, in: query, required: true, schema: { type: string, pattern: '^[A-Z]{3}$' } }
+      responses:
+        '200': { description: Credits minus debits, in minor units }
+  /payments:
+    post:
+      operationId: createPayment
+      summary: Create a payment order — Idempotency-Key header is REQUIRED
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePayment' }
+      responses:
+        '201': { description: Created (or the original order, on an idempotent retry) }
+        '400': { $ref: '#/components/responses/Problem' }
+  /payments/{id}/authorize:
+    post:
+      operationId: authorizePayment
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: AUTHORIZED }
+        '409': { $ref: '#/components/responses/Problem' }
+  /payments/{id}/execute:
+    post:
+      operationId: executePayment
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: EXECUTED }
+        '409': { $ref: '#/components/responses/Problem' }
+  /cards:
+    post:
+      operationId: issueCard
+      summary: Issue a card (response contains the masked PAN only)
+      responses:
+        '201': { description: Issued }
+  /loans:
+    post:
+      operationId: applyLoan
+      summary: Apply for a loan
+      responses:
+        '201': { description: APPLIED }
+  /loans/{id}/schedule:
+    get:
+      operationId: loanSchedule
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: Amortization schedule (French system, minor units) }
+  /notifications:
+    post:
+      operationId: dispatchNotification
+      summary: Dispatch a notification
+      responses:
+        '202': { description: Accepted }
 components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  responses:
+    Problem:
+      description: RFC 9457 problem details
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
   schemas:
-    DomainResource:
+    Problem:
       type: object
-      required: [id, schema_version, status, updated_at]
+      required: [type, title, status]
       properties:
-        id: { type: string }
-        schema_version: { type: string, const: '1.0' }
-        status: { type: string }
-        updated_at: { type: string, format: date-time }
-        metadata:
-          type: object
-          additionalProperties: true
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+    CreateCustomer:
+      type: object
+      required: [type, fullName, documentId, email]
+      properties:
+        type: { type: string, enum: [INDIVIDUAL, BUSINESS] }
+        fullName: { type: string }
+        documentId: { type: string }
+        email: { type: string, format: email }
+    Customer:
+      allOf:
+        - { $ref: '#/components/schemas/CreateCustomer' }
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            kycStatus: { type: string, enum: [PENDING, VERIFIED, REJECTED] }
+            status: { type: string, enum: [ACTIVE, BLOCKED, CLOSED] }
+    OpenAccount:
+      type: object
+      required: [customerId, type, currency]
+      properties:
+        customerId: { type: string, format: uuid }
+        type: { type: string, enum: [CHECKING, SAVINGS] }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        initialDepositMinor: { type: integer, format: int64, minimum: 0 }
+    Account:
+      allOf:
+        - { $ref: '#/components/schemas/OpenAccount' }
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            balanceMinor: { type: integer, format: int64 }
+            status: { type: string, enum: [ACTIVE, BLOCKED, CLOSED] }
+    JournalEntryCreate:
+      type: object
+      required: [reference, postings]
+      properties:
+        reference: { type: string, description: Caller idempotency reference }
+        description: { type: string }
+        postings:
+          type: array
+          minItems: 2
+          items:
+            type: object
+            required: [accountId, direction, amountMinor, currency]
+            properties:
+              accountId: { type: string, format: uuid }
+              direction: { type: string, enum: [DEBIT, CREDIT] }
+              amountMinor: { type: integer, format: int64, minimum: 1 }
+              currency: { type: string, pattern: '^[A-Z]{3}$' }
+    CreatePayment:
+      type: object
+      required: [debitAccountId, creditAccountId, amountMinor, currency]
+      properties:
+        debitAccountId: { type: string, format: uuid }
+        creditAccountId: { type: string, format: uuid }
+        amountMinor: { type: integer, format: int64, minimum: 1 }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        rail: { type: string, enum: [INTERNAL, SEPA, FEDNOW, SPEI, GENERIC], default: INTERNAL }
